@@ -297,6 +297,11 @@ docsRouter.get('/', (c) => {
   <script>
     async function apiFetch(path) {
       const res = await fetch(path);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error("HTTP " + res.status + ": " + text.slice(0, 120));
+      }
       return await res.json();
     }
 
