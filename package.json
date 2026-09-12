@@ -6,8 +6,8 @@
   "main": "api/index.ts",
   "scripts": {
     "dev": "tsx watch api/index.ts",
-    "build": "tsc",
-    "start": "node dist/api/index.js"
+    "type-check": "tsc --noEmit",
+    "start": "tsx api/index.ts"
   },
   "keywords": [
     "manga",
