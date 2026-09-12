@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
-import { handle } from 'hono/vercel';
+import { handle } from '@hono/node-server/vercel';
 
 import { mangaRouter } from '../src/routes/manga.js';
 import { proxyRouter } from '../src/routes/proxy.js';
