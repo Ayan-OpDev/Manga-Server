@@ -1,0 +1,35 @@
+{
+  "name": "manga-server",
+  "version": "1.0.0",
+  "description": "High-performance Vercel Serverless Manga, Manhwa & Manhua API powered by Hono",
+  "type": "module",
+  "main": "api/index.ts",
+  "scripts": {
+    "dev": "tsx watch api/index.ts",
+    "build": "tsc",
+    "start": "node dist/api/index.js"
+  },
+  "keywords": [
+    "manga",
+    "manhwa",
+    "manhua",
+    "hono",
+    "vercel",
+    "serverless",
+    "mangadex",
+    "manganato"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "axios": "^1.7.9",
+    "cheerio": "^1.0.0",
+    "hono": "^4.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.8",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}
