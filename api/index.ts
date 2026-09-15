@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { handle } from '@hono/node-server/vercel';
 
 import { mangaRouter } from '../src/routes/manga.js';
 import { proxyRouter } from '../src/routes/proxy.js';
@@ -67,32 +68,53 @@ app.onError((err, c) => {
 
 // Start local dev server if executed directly in development and not running on Vercel
 const isDirectExecution = Boolean(
-  process.argv[1] &&
+  typeof process !== 'undefined' &&
+    Array.isArray(process?.argv) &&
+    process.argv[1] &&
     (process.argv[1].endsWith('api/index.ts') ||
       process.argv[1].endsWith('api\\index.ts') ||
       process.argv[1].endsWith('api/index.js') ||
       process.argv[1].endsWith('api\\index.js'))
 );
 
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && isDirectExecution) {
-  import('@hono/node-server').then(({ serve }) => {
-    const port = Number(process.env.PORT || 3000);
-    serve(
-      {
-        fetch: app.fetch,
-        port,
-      },
-      (info) => {
-        console.log(`🚀 Tanko Manga Server running at http://localhost:${info.port}`);
-      }
-    );
-  });
+if (
+  typeof process !== 'undefined' &&
+  process.env?.NODE_ENV !== 'production' &&
+  !process.env?.VERCEL &&
+  isDirectExecution
+) {
+  import('@hono/node-server')
+    .then(({ serve }) => {
+      const port = Number(process.env?.PORT || 3000);
+      serve(
+        {
+          fetch: app.fetch,
+          port,
+        },
+        (info) => {
+          console.log(`🚀 Tanko Manga Server running at http://localhost:${info.port}`);
+        }
+      );
+    })
+    .catch(() => {});
 }
+
+// Node.js Serverless Function adapter
+const nodeHandler = handle(app);
+
+// Universal export: handles Node.js Serverless (req, res) AND Web/Edge (Request)
+export default function handler(req: any, res?: any) {
+  if (res && typeof res.writeHead === 'function') {
+    return nodeHandler(req, res);
+  }
+  return app.fetch(req);
+}
+
+// Support Web fetch API if Edge runtime is activated
+handler.fetch = app.fetch;
 
 // Export app for tests and external routers
 export { app };
 
-// Export for Vercel Edge Runtime
-export default app.fetch;
 
 
