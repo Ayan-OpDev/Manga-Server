@@ -5,9 +5,9 @@
   "type": "module",
   "main": "api/index.ts",
   "scripts": {
-    "dev": "tsx watch api/index.ts",
+    "dev": "tsx watch server.ts",
     "type-check": "tsc --noEmit",
-    "start": "tsx api/index.ts"
+    "start": "tsx server.ts"
   },
   "keywords": [
     "manga",
