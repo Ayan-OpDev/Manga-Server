@@ -1,12 +1,25 @@
 import { Hono } from 'hono';
 import { registry } from '../providers/index.js';
+import { UpstreamTimeoutError } from '../utils/fetcher.js';
 
 export const mangaRouter = new Hono();
+
+const VERCEL_EDGE_CACHE_HEADER = 'public, s-maxage=3600, stale-while-revalidate=86400';
 
 function getRequestOrigin(c: any): string {
   const host = c.req.header('x-forwarded-host') || c.req.header('host') || 'localhost:3000';
   const proto = c.req.header('x-forwarded-proto') || 'http';
   return `${proto}://${host}`;
+}
+
+function handleRouteError(c: any, fallbackMessage: string, error: any) {
+  if (error instanceof UpstreamTimeoutError || error?.name === 'UpstreamTimeoutError' || error?.message === 'Upstream timeout') {
+    return c.json({ success: false, error: 'Upstream timeout' }, 504);
+  }
+  return c.json(
+    { success: false, error: fallbackMessage, message: error?.message },
+    500
+  );
 }
 
 // Health Check
@@ -32,6 +45,7 @@ mangaRouter.get('/search', async (c) => {
   try {
     const provider = registry.get(providerName);
     const data = await provider.search(query, page);
+    c.header('Cache-Control', VERCEL_EDGE_CACHE_HEADER);
     return c.json({
       success: true,
       provider: provider.name,
@@ -40,10 +54,7 @@ mangaRouter.get('/search', async (c) => {
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Search failed', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Search failed', error);
   }
 });
 
@@ -55,6 +66,7 @@ mangaRouter.get('/popular', async (c) => {
   try {
     const provider = registry.get(providerName);
     const data = await provider.getPopular(page);
+    c.header('Cache-Control', VERCEL_EDGE_CACHE_HEADER);
     return c.json({
       success: true,
       provider: provider.name,
@@ -63,10 +75,7 @@ mangaRouter.get('/popular', async (c) => {
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Failed to fetch popular manga', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Failed to fetch popular manga', error);
   }
 });
 
@@ -78,6 +87,7 @@ mangaRouter.get('/latest', async (c) => {
   try {
     const provider = registry.get(providerName);
     const data = await provider.getLatest(page);
+    c.header('Cache-Control', VERCEL_EDGE_CACHE_HEADER);
     return c.json({
       success: true,
       provider: provider.name,
@@ -86,10 +96,7 @@ mangaRouter.get('/latest', async (c) => {
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Failed to fetch latest manga', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Failed to fetch latest manga', error);
   }
 });
 
@@ -101,16 +108,14 @@ mangaRouter.get('/manga/:id', async (c) => {
   try {
     const provider = registry.get(providerName);
     const data = await provider.getMangaInfo(id);
+    c.header('Cache-Control', VERCEL_EDGE_CACHE_HEADER);
     return c.json({
       success: true,
       provider: provider.name,
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Failed to fetch manga info', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Failed to fetch manga info', error);
   }
 });
 
@@ -130,10 +135,7 @@ mangaRouter.get('/chapters/:id', async (c) => {
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Failed to fetch chapters', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Failed to fetch chapters', error);
   }
 });
 
@@ -154,9 +156,6 @@ mangaRouter.get('/pages/:chapterId', async (c) => {
       data,
     });
   } catch (error: any) {
-    return c.json(
-      { success: false, error: 'Failed to fetch chapter pages', message: error.message },
-      500
-    );
+    return handleRouteError(c, 'Failed to fetch chapter pages', error);
   }
 });

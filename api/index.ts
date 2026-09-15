@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { serve } from '@hono/node-server';
-import { handle } from '@hono/node-server/vercel';
 
 import { mangaRouter } from '../src/routes/manga.js';
 import { proxyRouter } from '../src/routes/proxy.js';
 import { docsRouter } from '../src/routes/docs.js';
+import { UpstreamTimeoutError } from '../src/utils/fetcher.js';
+
+export const config = { runtime: 'edge' };
 
 const app = new Hono();
 
@@ -45,6 +46,15 @@ app.notFound((c) => {
 // Error handling
 app.onError((err, c) => {
   console.error('Unhandled server error:', err);
+  if (err instanceof UpstreamTimeoutError || err.name === 'UpstreamTimeoutError' || err.message === 'Upstream timeout') {
+    return c.json(
+      {
+        success: false,
+        error: 'Upstream timeout',
+      },
+      504
+    );
+  }
   return c.json(
     {
       success: false,
@@ -55,19 +65,26 @@ app.onError((err, c) => {
   );
 });
 
-// Start local dev server if not running on Vercel
-if (!process.env.VERCEL) {
-  const port = Number(process.env.PORT || 3000);
-  serve(
-    {
-      fetch: app.fetch,
-      port,
-    },
-    (info) => {
-      console.log(`🚀 Tanko Manga Server running at http://localhost:${info.port}`);
-    }
-  );
+// Start local dev server if in development and not running on Vercel
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  import('@hono/node-server').then(({ serve }) => {
+    const port = Number(process.env.PORT || 3000);
+    serve(
+      {
+        fetch: app.fetch,
+        port,
+      },
+      (info) => {
+        console.log(`🚀 Tanko Manga Server running at http://localhost:${info.port}`);
+      }
+    );
+  });
 }
 
-// Export for Vercel Serverless Function
-export default handle(app);
+// Export app for tests and external routers
+export { app };
+
+// Export for Vercel Edge Runtime
+export default app.fetch;
+
+

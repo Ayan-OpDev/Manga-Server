@@ -1,5 +1,5 @@
-import axios from 'axios';
 import type { MangaProvider, MangaItem, ChapterItem, PageItem, MangaProviderName } from '../types/index.js';
+import { fetchJson } from '../utils/fetcher.js';
 
 export class MangaDexProvider implements MangaProvider {
   public name: MangaProviderName = 'mangadex';
@@ -56,6 +56,38 @@ export class MangaDexProvider implements MangaProvider {
     };
   }
 
+  private buildFeedParams(limit: number, offset: number, lang?: string): URLSearchParams {
+    const params = new URLSearchParams();
+    params.append('limit', String(limit));
+    params.append('offset', String(offset));
+    if (lang && lang !== 'all') {
+      params.append('translatedLanguage[]', lang);
+    }
+    params.append('order[chapter]', 'desc');
+    params.append('includeExternalUrl', '0');
+    params.append('includeEmptyPages', '0');
+    return params;
+  }
+
+  private parseChapterItems(items: any[]): ChapterItem[] {
+    return items.map((item: any) => {
+      const { id: chapterId, attributes } = item;
+      const chapterNum = attributes.chapter || '0';
+      const title = attributes.title
+        ? `Ch. ${chapterNum} - ${attributes.title}`
+        : `Chapter ${chapterNum}`;
+
+      return {
+        id: chapterId,
+        number: Number.isNaN(Number(chapterNum)) ? chapterNum : Number(chapterNum),
+        title,
+        lang: attributes.translatedLanguage,
+        publishDate: attributes.publishAt,
+        pagesCount: attributes.pages,
+      };
+    });
+  }
+
   async search(query: string, page = 1): Promise<MangaItem[]> {
     const limit = 20;
     const offset = (page - 1) * limit;
@@ -71,8 +103,8 @@ export class MangaDexProvider implements MangaProvider {
     params.append('contentRating[]', 'suggestive');
     params.append('contentRating[]', 'erotica');
 
-    const res = await axios.get(`${this.baseUrl}/manga`, { params, timeout: 10000 });
-    return (res.data?.data || []).map((item: any) => this.formatManga(item));
+    const res = await fetchJson<any>(`${this.baseUrl}/manga?${params.toString()}`);
+    return (res?.data || []).map((item: any) => this.formatManga(item));
   }
 
   async getPopular(page = 1): Promise<MangaItem[]> {
@@ -89,8 +121,8 @@ export class MangaDexProvider implements MangaProvider {
     params.append('contentRating[]', 'safe');
     params.append('contentRating[]', 'suggestive');
 
-    const res = await axios.get(`${this.baseUrl}/manga`, { params, timeout: 10000 });
-    return (res.data?.data || []).map((item: any) => this.formatManga(item));
+    const res = await fetchJson<any>(`${this.baseUrl}/manga?${params.toString()}`);
+    return (res?.data || []).map((item: any) => this.formatManga(item));
   }
 
   async getLatest(page = 1): Promise<MangaItem[]> {
@@ -106,8 +138,8 @@ export class MangaDexProvider implements MangaProvider {
     params.append('contentRating[]', 'safe');
     params.append('contentRating[]', 'suggestive');
 
-    const res = await axios.get(`${this.baseUrl}/manga`, { params, timeout: 10000 });
-    return (res.data?.data || []).map((item: any) => this.formatManga(item));
+    const res = await fetchJson<any>(`${this.baseUrl}/manga?${params.toString()}`);
+    return (res?.data || []).map((item: any) => this.formatManga(item));
   }
 
   async getMangaInfo(id: string): Promise<MangaItem> {
@@ -116,58 +148,44 @@ export class MangaDexProvider implements MangaProvider {
     params.append('includes[]', 'author');
     params.append('includes[]', 'artist');
 
-    const res = await axios.get(`${this.baseUrl}/manga/${id}`, { params, timeout: 10000 });
-    return this.formatManga(res.data.data);
+    const res = await fetchJson<any>(`${this.baseUrl}/manga/${id}?${params.toString()}`);
+    return this.formatManga(res.data);
   }
 
   async getChapters(id: string, lang = 'en'): Promise<ChapterItem[]> {
     const limit = 100;
-    let offset = 0;
-    const chapters: ChapterItem[] = [];
+    const firstParams = this.buildFeedParams(limit, 0, lang);
+    const firstRes = await fetchJson<any>(`${this.baseUrl}/manga/${id}/feed?${firstParams.toString()}`);
 
-    // Up to 3 batches to respect serverless timeouts
-    for (let batch = 0; batch < 3; batch++) {
-      const params = new URLSearchParams();
-      params.append('limit', String(limit));
-      params.append('offset', String(offset));
-      if (lang && lang !== 'all') {
-        params.append('translatedLanguage[]', lang);
-      }
-      params.append('order[chapter]', 'desc');
-      params.append('includeExternalUrl', '0');
-      params.append('includeEmptyPages', '0');
+    const total = firstRes?.total || 0;
+    const allItems = [...(firstRes?.data || [])];
 
-      const res = await axios.get(`${this.baseUrl}/manga/${id}/feed`, { params, timeout: 10000 });
-      const items = res.data?.data || [];
-      for (const item of items) {
-        const { id: chapterId, attributes } = item;
-        const chapterNum = attributes.chapter || '0';
-        const title = attributes.title
-          ? `Ch. ${chapterNum} - ${attributes.title}`
-          : `Chapter ${chapterNum}`;
-
-        chapters.push({
-          id: chapterId,
-          number: Number.isNaN(Number(chapterNum)) ? chapterNum : Number(chapterNum),
-          title,
-          lang: attributes.translatedLanguage,
-          publishDate: attributes.publishAt,
-          pagesCount: attributes.pages,
-        });
+    // If there are more chapters than the first page, fetch remaining concurrently
+    if (total > limit) {
+      const offsets: number[] = [];
+      for (let offset = limit; offset < total; offset += limit) {
+        offsets.push(offset);
       }
 
-      if (chapters.length >= (res.data?.total || 0) || items.length < limit) {
-        break;
+      const remainingPromises = offsets.map((offset) => {
+        const params = this.buildFeedParams(limit, offset, lang);
+        return fetchJson<any>(`${this.baseUrl}/manga/${id}/feed?${params.toString()}`);
+      });
+
+      const remainingResults = await Promise.all(remainingPromises);
+      for (const result of remainingResults) {
+        if (result?.data) {
+          allItems.push(...result.data);
+        }
       }
-      offset += limit;
     }
 
-    return chapters;
+    return this.parseChapterItems(allItems);
   }
 
   async getPages(chapterId: string, origin = ''): Promise<PageItem[]> {
-    const res = await axios.get(`${this.baseUrl}/at-home/server/${chapterId}`, { timeout: 10000 });
-    const { baseUrl, chapter } = res.data;
+    const res = await fetchJson<any>(`${this.baseUrl}/at-home/server/${chapterId}`);
+    const { baseUrl, chapter } = res;
     const hash = chapter.hash;
     const files: string[] = chapter.data || [];
 
