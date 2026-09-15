@@ -65,8 +65,16 @@ app.onError((err, c) => {
   );
 });
 
-// Start local dev server if in development and not running on Vercel
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+// Start local dev server if executed directly in development and not running on Vercel
+const isDirectExecution = Boolean(
+  process.argv[1] &&
+    (process.argv[1].endsWith('api/index.ts') ||
+      process.argv[1].endsWith('api\\index.ts') ||
+      process.argv[1].endsWith('api/index.js') ||
+      process.argv[1].endsWith('api\\index.js'))
+);
+
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL && isDirectExecution) {
   import('@hono/node-server').then(({ serve }) => {
     const port = Number(process.env.PORT || 3000);
     serve(
